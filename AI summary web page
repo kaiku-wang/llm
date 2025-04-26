@@ -1,0 +1,72 @@
+#import
+import requests
+from bs4 import BeautifulSoup
+from google import genai
+from google.genai import types
+
+# 定义 Website 类
+class Website:
+    url: str
+    title: str
+    text: str
+
+    def __init__(self, url):
+        self.url = url
+        response = requests.get(url)
+        soup = BeautifulSoup(response.content,'html.parser')
+        self.title = soup.title.string if soup.title else 'No title found'
+        for irrelevant in soup.body(["script","style","image","input"]):
+            irrelevant.decompose()
+        self.text = soup.body.get_text(separator="\n",strip=True)
+
+# 生成用户提示词
+def user_prompt_for(website):
+    user_prompt = "You are an assistant that analyzes the contents of a website and provides a short summary, ignoring text that might be navigation related. Respond in markdown.\n\n"
+    user_prompt += f"You are looking at a website titled {website.title}\n"
+    user_prompt += "The contents of this website is as follows. Please provide a short summary of this website in markdown. "
+    user_prompt += "If it includes news or announcements, then summarize these too.\n\n"
+    user_prompt += website.text
+    return user_prompt
+
+# Gemini 调用函数
+def generate_summary(website_url):
+    # 构建 Website 对象
+    website = Website(website_url)
+    prompt = user_prompt_for(website)
+
+    # 初始化 Gemini 客户端
+    client = genai.Client(
+        api_key="**************",
+    )
+
+    model = "models/gemini-2.5-pro-exp-03-25"
+
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(text=prompt)
+            ],
+        ),
+    ]
+
+    generate_content_config = types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(
+            thinking_budget=2,
+        ),
+        response_mime_type="text/plain",
+    )
+
+    print(f"\n📄 Summary of: {website.title}\n")
+    for chunk in client.models.generate_content_stream(
+        model=model,
+        contents=contents,
+        config=generate_content_config,
+    ):
+        print(chunk.text, end="")
+
+
+# 示例调用
+if __name__ == "__main__":
+    test_url = input("请输入你要总结的网址：")
+    generate_summary(test_url)
